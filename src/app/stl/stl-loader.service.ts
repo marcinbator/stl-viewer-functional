@@ -1,36 +1,53 @@
 import { Injectable } from '@angular/core';
 import { TaskEither, tryCatch } from 'fp-ts/TaskEither';
 import * as THREE from 'three';
-import { STLLoader } from 'three-stdlib';
-
-interface RotationState {
-  isDown: boolean;
-  startX: number;
-  startY: number;
-  rotX: number;
-  rotY: number;
-}
-
-interface SceneSetup {
-  renderer: THREE.WebGLRenderer;
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-}
+import { RotationState } from './scene.interface';
+import * as Pure from './scene.pure';
 
 @Injectable()
 export class StlLoaderService {
-  private createRenderer = (container: HTMLElement): SceneSetup => {
-    const width = container.clientWidth || 800;
-    const height = container.clientHeight || 600;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x222222);
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 0, 100);
+  public loadFile(file: File, container: HTMLElement): TaskEither<Error, () => void> {
+    return tryCatch(
+      async () => {
+        const rotationState: RotationState = {
+          isDown: false,
+          startX: 0,
+          startY: 0,
+          rotX: 0,
+          rotY: 0,
+        };
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height);
-    return { renderer, scene, camera };
-  };
+        const buffer = await file.arrayBuffer();
+        const { renderer, scene, camera } = Pure.createRenderer(container);
+
+        this.createLights(scene);
+        container.innerHTML = '';
+        container.appendChild(renderer.domElement);
+
+        const rotationHandlers = this.createRotationHandlers(rotationState);
+        const geometry = Pure.parseSTLBuffer(buffer);
+        const material = Pure.createMaterial();
+        const mesh = Pure.createMesh(geometry, material);
+
+        scene.add(mesh);
+
+        const { size, center } = Pure.calculateBoundingBox(mesh);
+        this.adjustCamera(camera, size, center);
+
+        const onWheel = this.createZoomHandler(camera, center, size);
+        const handlers = { ...rotationHandlers, onWheel };
+
+        this.attachEventListeners(container, handlers);
+
+        const rafId = this.startAnimation(mesh, renderer, scene, camera, rotationState);
+
+        return this.createCleanupFunction(rafId, container, renderer, geometry, material, handlers);
+      },
+      (reason) => new Error(String(reason))
+    );
+  }
+
+  //
 
   private createLights = (scene: THREE.Scene): void => {
     const dir = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -38,34 +55,6 @@ export class StlLoaderService {
     scene.add(dir);
     const ambient = new THREE.AmbientLight(0x404040);
     scene.add(ambient);
-  };
-
-  private createMaterial = (): THREE.MeshStandardMaterial => {
-    return new THREE.MeshStandardMaterial({
-      color: 0x9dd3ff,
-      metalness: 0.3,
-      roughness: 0.7,
-      side: THREE.DoubleSide,
-    });
-  };
-
-  private parseSTLBuffer = (buffer: ArrayBuffer): THREE.BufferGeometry => {
-    const loader = new STLLoader();
-    const geometry = loader.parse(buffer);
-    geometry.computeVertexNormals();
-    geometry.center();
-    return geometry;
-  };
-
-  private createMesh = (geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Mesh => {
-    return new THREE.Mesh(geometry, material);
-  };
-
-  private calculateBoundingBox = (mesh: THREE.Mesh): { size: number; center: THREE.Vector3 } => {
-    const box = new THREE.Box3().setFromObject(mesh);
-    const size = box.getSize(new THREE.Vector3()).length();
-    const center = box.getCenter(new THREE.Vector3());
-    return { size, center };
   };
 
   private adjustCamera = (
@@ -177,8 +166,10 @@ export class StlLoaderService {
   ): number => {
     let rafId: number;
     const animate = () => {
-      mesh.rotation.x = state.rotX;
+      mesh.rotation.order = 'YXZ';
       mesh.rotation.y = state.rotY;
+      mesh.rotation.x = state.rotX;
+      mesh.rotation.z = 0;
       renderer.render(scene, camera);
       rafId = requestAnimationFrame(animate);
     };
@@ -208,49 +199,4 @@ export class StlLoaderService {
       renderer.dispose();
     };
   };
-
-  private mountRenderer = (container: HTMLElement, renderer: THREE.WebGLRenderer): void => {
-    container.innerHTML = '';
-    container.appendChild(renderer.domElement);
-  };
-
-  public loadFile(file: File, container: HTMLElement): TaskEither<Error, () => void> {
-    return tryCatch(
-      async () => {
-        const { renderer, scene, camera } = this.createRenderer(container);
-        this.createLights(scene);
-        this.mountRenderer(container, renderer);
-
-        const rotationState: RotationState = {
-          isDown: false,
-          startX: 0,
-          startY: 0,
-          rotX: 0,
-          rotY: 0,
-        };
-
-        const rotationHandlers = this.createRotationHandlers(rotationState);
-
-        const buffer = await file.arrayBuffer();
-        const geometry = this.parseSTLBuffer(buffer);
-        const material = this.createMaterial();
-        const mesh = this.createMesh(geometry, material);
-
-        scene.add(mesh);
-
-        const { size, center } = this.calculateBoundingBox(mesh);
-        this.adjustCamera(camera, size, center);
-
-        const onWheel = this.createZoomHandler(camera, center, size);
-        const handlers = { ...rotationHandlers, onWheel };
-
-        this.attachEventListeners(container, handlers);
-
-        const rafId = this.startAnimation(mesh, renderer, scene, camera, rotationState);
-
-        return this.createCleanupFunction(rafId, container, renderer, geometry, material, handlers);
-      },
-      (reason) => new Error(String(reason))
-    );
-  }
 }

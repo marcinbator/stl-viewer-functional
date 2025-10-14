@@ -28,7 +28,10 @@
     "@angular/forms": "^20.3.0",
     "@angular/platform-browser": "^20.3.0",
     "@angular/router": "^20.3.0",
+    "fp-ts": "^2.16.0",
     "rxjs": "~7.8.0",
+    "three": "^0.159.0",
+    "three-stdlib": "^2.11.0",
     "tslib": "^2.3.0"
   },
   "devDependencies": {
@@ -36,6 +39,7 @@
     "@angular/cli": "^20.3.3",
     "@angular/compiler-cli": "^20.3.0",
     "@types/jasmine": "~5.1.0",
+    "@types/three": "^0.180.0",
     "jasmine-core": "~5.9.0",
     "karma": "~6.4.0",
     "karma-chrome-launcher": "~3.2.0",

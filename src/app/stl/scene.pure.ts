@@ -67,3 +67,21 @@ export function computeRotationDelta(
   const dy = (clientY - startY) * sensitivity;
   return { dx, dy, newStartX: clientX, newStartY: clientY };
 }
+
+export function computeDefaultCameraParams(
+  width: number,
+  height: number
+): {
+  fov: number;
+  aspect: number;
+  near: number;
+  far: number;
+  position: THREE.Vector3;
+} {
+  const fov = 45;
+  const aspect = width / height;
+  const near = 0.1;
+  const far = 1000;
+  const position = new THREE.Vector3(0, 0, 100);
+  return { fov, aspect, near, far, position };
+}

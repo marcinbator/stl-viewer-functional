@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { STLLoader } from 'three-stdlib';
+import { computeDefaultCameraParams } from './scene.pure';
 
 export function createRenderer(container: HTMLElement): {
   renderer: THREE.WebGLRenderer;
@@ -10,8 +11,9 @@ export function createRenderer(container: HTMLElement): {
   const height = container.clientHeight || 600;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x222222);
-  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-  camera.position.set(0, 0, 100);
+  const params = computeDefaultCameraParams(width, height);
+  const camera = new THREE.PerspectiveCamera(params.fov, params.aspect, params.near, params.far);
+  camera.position.copy(params.position);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(width, height);

@@ -3,6 +3,7 @@ import { TaskEither, tryCatch } from 'fp-ts/TaskEither';
 import * as THREE from 'three';
 import { RotationState } from './scene.interface';
 import * as Pure from './scene.pure';
+import * as Effects from './scene.effects';
 
 @Injectable()
 export class StlLoaderService {
@@ -18,21 +19,26 @@ export class StlLoaderService {
         };
 
         const buffer = await file.arrayBuffer();
-        const { renderer, scene, camera } = Pure.createRenderer(container);
+        const { renderer, scene, camera } = Effects.createRenderer(container);
 
-        this.createLights(scene);
+        Effects.createLights(scene);
         container.innerHTML = '';
         container.appendChild(renderer.domElement);
 
         const rotationHandlers = this.createRotationHandlers(rotationState);
-        const geometry = Pure.parseSTLBuffer(buffer);
+        const geometry = Effects.parseSTLBuffer(buffer);
         const material = Pure.createMaterial();
         const mesh = Pure.createMesh(geometry, material);
 
         scene.add(mesh);
 
-        const { size, center } = Pure.calculateBoundingBox(mesh);
-        this.adjustCamera(camera, size, center);
+        const { size, center } = Pure.calculateBoundingBoxFromMesh(mesh);
+        const camCfg = Pure.computeCameraConfig(size, center);
+        camera.near = camCfg.near;
+        camera.far = camCfg.far;
+        camera.updateProjectionMatrix();
+        camera.position.copy(camCfg.position);
+        camera.lookAt(center);
 
         const onWheel = this.createZoomHandler(camera, center, size);
         const handlers = { ...rotationHandlers, onWheel };
@@ -48,29 +54,6 @@ export class StlLoaderService {
   }
 
   //
-
-  private createLights = (scene: THREE.Scene): void => {
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(0, 0, 1);
-    scene.add(dir);
-    const ambient = new THREE.AmbientLight(0x404040);
-    scene.add(ambient);
-  };
-
-  private adjustCamera = (
-    camera: THREE.PerspectiveCamera,
-    size: number,
-    center: THREE.Vector3
-  ): void => {
-    camera.near = Math.max(0.1, size / 1000);
-    camera.far = size * 10;
-    camera.updateProjectionMatrix();
-    camera.position.copy(center);
-    camera.position.x += size / 2.0;
-    camera.position.y += size / 5.0;
-    camera.position.z += size / 2.0;
-    camera.lookAt(center);
-  };
 
   private createRotationHandlers = (
     state: RotationState
@@ -91,13 +74,16 @@ export class StlLoaderService {
 
     const onPointerMove = (ev: PointerEvent) => {
       if (!state.isDown) return;
-      const dx = (ev.clientX - state.startX) * 0.005;
-      const dy = (ev.clientY - state.startY) * 0.005;
+      const { dx, dy, newStartX, newStartY } = Pure.computeRotationDelta(
+        state.startX,
+        state.startY,
+        ev.clientX,
+        ev.clientY
+      );
       state.rotY += dx;
       state.rotX += dy;
-
-      state.startX = ev.clientX;
-      state.startY = ev.clientY;
+      state.startX = newStartX;
+      state.startY = newStartY;
     };
 
     return { onPointerDown, onPointerUp, onPointerMove };
@@ -110,20 +96,8 @@ export class StlLoaderService {
   ) => {
     return (ev: WheelEvent) => {
       ev.preventDefault();
-
-      const currentDistance = camera.position.distanceTo(center);
-
-      const zoomSpeed = modelSize * 0.001;
-      const delta = ev.deltaY * zoomSpeed;
-
-      const minDistance = modelSize * 0.5;
-      const maxDistance = modelSize * 10;
-
-      const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance + delta));
-
-      const direction = new THREE.Vector3();
-      direction.subVectors(camera.position, center).normalize();
-      camera.position.copy(center).addScaledVector(direction, newDistance);
+      const newPos = Pure.computeZoomedPosition(camera.position, center, ev.deltaY, modelSize);
+      camera.position.copy(newPos);
     };
   };
 

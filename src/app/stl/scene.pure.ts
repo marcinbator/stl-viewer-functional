@@ -1,20 +1,4 @@
-import { STLLoader } from 'three-stdlib';
-import { SceneSetup } from './scene.interface';
 import * as THREE from 'three';
-
-//allocates 3D
-export function createRenderer(container: HTMLElement): SceneSetup {
-  const width = container.clientWidth || 800;
-  const height = container.clientHeight || 600;
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x222222);
-  const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-  camera.position.set(0, 0, 100);
-
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(width, height);
-  return { renderer, scene, camera };
-}
 
 export function createMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
@@ -25,21 +9,61 @@ export function createMaterial(): THREE.MeshStandardMaterial {
   });
 }
 
-export function parseSTLBuffer(buffer: ArrayBuffer): THREE.BufferGeometry {
-  const loader = new STLLoader();
-  const geometry = loader.parse(buffer);
-  geometry.computeVertexNormals();
-  geometry.center();
-  return geometry;
-}
-
 export function createMesh(geometry: THREE.BufferGeometry, material: THREE.Material): THREE.Mesh {
   return new THREE.Mesh(geometry, material);
 }
 
-export function calculateBoundingBox(mesh: THREE.Mesh): { size: number; center: THREE.Vector3 } {
+export function calculateBoundingBoxFromMesh(mesh: THREE.Mesh): {
+  size: number;
+  center: THREE.Vector3;
+} {
   const box = new THREE.Box3().setFromObject(mesh);
   const size = box.getSize(new THREE.Vector3()).length();
   const center = box.getCenter(new THREE.Vector3());
   return { size, center };
+}
+
+export function computeCameraConfig(
+  size: number,
+  center: THREE.Vector3
+): { near: number; far: number; position: THREE.Vector3 } {
+  const near = Math.max(0.1, size / 1000);
+  const far = size * 10;
+  const position = new THREE.Vector3().copy(center);
+  position.x += size / 2.0;
+  position.y += size / 5.0;
+  position.z += size / 2.0;
+  return { near, far, position };
+}
+
+export function computeZoomedPosition(
+  cameraPos: THREE.Vector3,
+  center: THREE.Vector3,
+  deltaY: number,
+  modelSize: number
+): THREE.Vector3 {
+  const currentDistance = cameraPos.distanceTo(center);
+  const zoomSpeed = modelSize * 0.001;
+  const delta = deltaY * zoomSpeed;
+
+  const minDistance = modelSize * 0.5;
+  const maxDistance = modelSize * 10;
+
+  const newDistance = Math.max(minDistance, Math.min(maxDistance, currentDistance + delta));
+
+  const direction = new THREE.Vector3();
+  direction.subVectors(cameraPos, center).normalize();
+  return new THREE.Vector3().copy(center).addScaledVector(direction, newDistance);
+}
+
+export function computeRotationDelta(
+  startX: number,
+  startY: number,
+  clientX: number,
+  clientY: number,
+  sensitivity = 0.005
+): { dx: number; dy: number; newStartX: number; newStartY: number } {
+  const dx = (clientX - startX) * sensitivity;
+  const dy = (clientY - startY) * sensitivity;
+  return { dx, dy, newStartX: clientX, newStartY: clientY };
 }
